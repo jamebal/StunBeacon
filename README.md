@@ -20,7 +20,9 @@
 ├── .github/
 │   └── workflows/
 │       └── release.yml
+├── .dockerignore
 ├── Cargo.toml
+├── Dockerfile
 ├── README.md
 ├── src/
 │   ├── app.rs
@@ -79,6 +81,24 @@ curl http://127.0.0.1:3000/api/stun/client-a/get
 curl http://127.0.0.1:3000/api/stun/client-b/get
 ```
 
+## Docker 运行
+
+### 1. 本地构建镜像
+
+```bash
+docker build -t stunbeacon:local .
+```
+
+### 2. 运行容器
+
+```bash
+docker run --rm \
+  -p 3000:3000 \
+  -e AUTH_TOKEN=your-secret-token \
+  -e LISTEN_ADDR=0.0.0.0:3000 \
+  stunbeacon:local
+```
+
 ## 触发 GitHub Release 构建
 
 当你把带有 `v*` 前缀的 Tag 推送到 GitHub 时，`.github/workflows/release.yml` 会自动触发：
@@ -88,11 +108,36 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-工作流会自动构建以下目标：
+工作流会自动构建以下二进制目标：
 
 - `x86_64-unknown-linux-musl`
 - `aarch64-unknown-linux-musl`
 - `x86_64-apple-darwin`
 - `aarch64-apple-darwin`
 
-构建完成后，压缩包会自动上传到对应的 GitHub Release 页面。
+构建完成后：
+
+- 压缩包会自动上传到对应的 GitHub Release 页面。
+- Docker 镜像会自动推送到 `ghcr.io/jamebal/stunbeacon`。
+- Docker 镜像只发布 Linux 多架构：
+  - `linux/amd64`
+  - `linux/arm64`
+- 每次发布标签会同时推送两个镜像标签：
+  - `ghcr.io/jamebal/stunbeacon:vX.Y.Z`
+  - `ghcr.io/jamebal/stunbeacon:latest`
+
+### 拉取 GHCR 镜像
+
+```bash
+docker pull ghcr.io/jamebal/stunbeacon:v0.1.1
+docker pull ghcr.io/jamebal/stunbeacon:latest
+```
+
+### 运行 GHCR 镜像
+
+```bash
+docker run --rm \
+  -p 3000:3000 \
+  -e AUTH_TOKEN=your-secret-token \
+  ghcr.io/jamebal/stunbeacon:latest
+```
