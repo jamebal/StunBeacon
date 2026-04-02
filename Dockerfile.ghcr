@@ -1,0 +1,13 @@
+# syntax=docker/dockerfile:1.7
+
+FROM scratch
+
+ARG TARGETARCH
+
+COPY docker-dist/${TARGETARCH}/stunbeacon /stunbeacon
+
+ENV LISTEN_ADDR=0.0.0.0:3000
+
+EXPOSE 3000
+
+ENTRYPOINT ["/stunbeacon"]

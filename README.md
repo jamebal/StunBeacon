@@ -23,6 +23,7 @@
 ├── .dockerignore
 ├── Cargo.toml
 ├── Dockerfile
+├── Dockerfile.ghcr
 ├── README.md
 ├── src/
 │   ├── app.rs
@@ -122,6 +123,7 @@ git push origin v1.0.0
 - Docker 镜像只发布 Linux 多架构：
   - `linux/amd64`
   - `linux/arm64`
+- GHCR 镜像不会在 Docker 构建阶段重新编译 Rust，而是直接复用前面产出的 Linux `musl` 二进制，以减少 QEMU/虚拟化带来的耗时。
 - 每次发布标签会同时推送两个镜像标签：
   - `ghcr.io/jamebal/stunbeacon:vX.Y.Z`
   - `ghcr.io/jamebal/stunbeacon:latest`
