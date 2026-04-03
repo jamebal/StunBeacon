@@ -5,10 +5,18 @@ use axum::{
 use http_body_util::BodyExt;
 use serde_json::json;
 use stunbeacon::{build_app, AppState};
+use tempfile::tempdir;
 use tower::ServiceExt;
 
 fn test_state(token: &str) -> AppState {
     AppState::new(token)
+}
+
+fn persistent_test_state(
+    token: &str,
+    data_file: impl AsRef<std::path::Path>,
+) -> std::io::Result<AppState> {
+    AppState::new_persistent(token, data_file)
 }
 
 #[tokio::test]
@@ -356,4 +364,119 @@ async fn gost_nodes_endpoint_rejects_incomplete_auth_query() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn update_persists_channels_to_data_file() {
+    let temp_dir = tempdir().unwrap();
+    let data_file = temp_dir.path().join("channels.json");
+    let app = build_app(persistent_test_state("secret-token", &data_file).unwrap());
+
+    let update_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/stun/demo/update")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::AUTHORIZATION, "Bearer secret-token")
+                .body(Body::from(r#"{"addr":"9.8.7.6:4321"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(update_response.status(), StatusCode::NO_CONTENT);
+
+    let persisted: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&data_file).unwrap()).unwrap();
+    assert_eq!(
+        persisted,
+        json!({
+            "version": 1,
+            "channels": {
+                "demo": "9.8.7.6:4321"
+            }
+        })
+    );
+}
+
+#[tokio::test]
+async fn persistent_state_restores_channel_after_restart() {
+    let temp_dir = tempdir().unwrap();
+    let data_file = temp_dir.path().join("channels.json");
+    let first_app = build_app(persistent_test_state("secret-token", &data_file).unwrap());
+
+    let update_response = first_app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/stun/demo/update")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::AUTHORIZATION, "Bearer secret-token")
+                .body(Body::from(r#"{"addr":"9.8.7.6:4321"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(update_response.status(), StatusCode::NO_CONTENT);
+
+    let restarted_app = build_app(persistent_test_state("secret-token", &data_file).unwrap());
+
+    let get_response = restarted_app
+        .oneshot(
+            Request::builder()
+                .uri("/api/stun/demo/get")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(get_response.status(), StatusCode::OK);
+    let body = get_response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(body.as_ref(), b"9.8.7.6:4321");
+}
+
+#[tokio::test]
+async fn update_returns_500_and_keeps_memory_clean_when_persist_fails() {
+    let temp_dir = tempdir().unwrap();
+    let readonly_dir = temp_dir.path().join("readonly");
+    std::fs::create_dir(&readonly_dir).unwrap();
+    let mut permissions = std::fs::metadata(&readonly_dir).unwrap().permissions();
+    permissions.set_readonly(true);
+    std::fs::set_permissions(&readonly_dir, permissions).unwrap();
+    let data_file = readonly_dir.join("channels.json");
+    let app = build_app(persistent_test_state("secret-token", &data_file).unwrap());
+
+    let update_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/stun/demo/update")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::AUTHORIZATION, "Bearer secret-token")
+                .body(Body::from(r#"{"addr":"9.8.7.6:4321"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(update_response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    let get_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/stun/demo/get")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let mut permissions = std::fs::metadata(&readonly_dir).unwrap().permissions();
+    permissions.set_readonly(false);
+    std::fs::set_permissions(&readonly_dir, permissions).unwrap();
+
+    assert_eq!(get_response.status(), StatusCode::NOT_FOUND);
 }

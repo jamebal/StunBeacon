@@ -1,6 +1,6 @@
 [package]
 name = "stunbeacon"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 
 [dependencies]
@@ -11,4 +11,5 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
 
 [dev-dependencies]
 http-body-util = "0.1"
+tempfile = "3"
 tower = { version = "0.5", features = ["util"] }

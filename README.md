@@ -45,9 +45,11 @@
 ```bash
 export AUTH_TOKEN="your-secret-token"
 export LISTEN_ADDR="0.0.0.0:3000"
+export DATA_FILE="./data/channels.json"
 ```
 
-`LISTEN_ADDR` 可选，不设置时默认监听 `0.0.0.0:3000`。
+`LISTEN_ADDR` 可选，不设置时默认监听 `0.0.0.0:3000`。  
+`DATA_FILE` 可选，不设置时默认使用 `./data/channels.json` 持久化各通道最新地址。
 
 ### 2. 启动服务
 
@@ -69,6 +71,8 @@ curl -X POST http://127.0.0.1:3000/api/stun/demo/update \
   -H 'Authorization: Bearer your-secret-token' \
   -d '{"addr":"1.2.3.4:5678"}'
 ```
+
+更新成功后，最新地址会立即写入 `DATA_FILE`，服务重启后仍会恢复。
 
 ### 5. 多客户端示例
 
@@ -191,8 +195,12 @@ docker run --rm \
   -p 3000:3000 \
   -e AUTH_TOKEN=your-secret-token \
   -e LISTEN_ADDR=0.0.0.0:3000 \
+  -e DATA_FILE=/data/channels.json \
+  -v "./data:/data" \
   stunbeacon:local
 ```
+
+如果你不挂载数据目录，容器重建后持久化文件也会一起丢失。
 
 ## 触发 GitHub Release 构建
 
@@ -225,7 +233,7 @@ git push origin v1.0.0
 ### 拉取 GHCR 镜像
 
 ```bash
-docker pull ghcr.io/jamebal/stunbeacon:v0.1.4
+docker pull ghcr.io/jamebal/stunbeacon:v0.1.5
 docker pull ghcr.io/jamebal/stunbeacon:latest
 ```
 
