@@ -3,6 +3,7 @@ use axum::{
     http::{header, Request, StatusCode},
 };
 use http_body_util::BodyExt;
+use serde_json::json;
 use stunbeacon::{build_app, AppState};
 use tower::ServiceExt;
 
@@ -210,4 +211,149 @@ async fn update_overwrites_addr_within_same_channel() {
     assert_eq!(get_response.status(), StatusCode::OK);
     let body = get_response.into_body().collect().await.unwrap().to_bytes();
     assert_eq!(body.as_ref(), b"5.6.7.8:9999");
+}
+
+#[tokio::test]
+async fn gost_nodes_endpoint_defaults_to_socks5_tls_node_json() {
+    let app = build_app(test_state("secret-token"));
+
+    let update_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/stun/demo/update")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::AUTHORIZATION, "Bearer secret-token")
+                .body(Body::from(r#"{"addr":"5.6.7.8:9999"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(update_response.status(), StatusCode::NO_CONTENT);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/stun/demo/gost/nodes?username=demo-user&password=pwd&serverName=home.example.com&caFile=%2Fpath%2Fto%2Fca.pem")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        payload,
+        json!([
+            {
+                "name": "demo",
+                "addr": "5.6.7.8:9999",
+                "connector": {
+                    "type": "socks5",
+                    "auth": {
+                        "username": "demo-user",
+                        "password": "pwd"
+                    }
+                },
+                "dialer": {
+                    "type": "tls",
+                    "tls": {
+                        "caFile": "/path/to/ca.pem",
+                        "secure": true,
+                        "serverName": "home.example.com"
+                    }
+                }
+            }
+        ])
+    );
+}
+
+#[tokio::test]
+async fn gost_nodes_endpoint_keeps_explicit_ss_tcp_compatibility() {
+    let app = build_app(test_state("secret-token"));
+
+    let update_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/stun/demo/update")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::AUTHORIZATION, "Bearer secret-token")
+                .body(Body::from(r#"{"addr":"5.6.7.8:9999"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(update_response.status(), StatusCode::NO_CONTENT);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/stun/demo/gost/nodes?connector=ss&dialer=tcp&username=chacha20-ietf-poly1305&password=pwd")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        payload,
+        json!([
+            {
+                "name": "demo",
+                "addr": "5.6.7.8:9999",
+                "connector": {
+                    "type": "ss",
+                    "auth": {
+                        "username": "chacha20-ietf-poly1305",
+                        "password": "pwd"
+                    }
+                },
+                "dialer": {
+                    "type": "tcp"
+                }
+            }
+        ])
+    );
+}
+
+#[tokio::test]
+async fn gost_nodes_endpoint_rejects_incomplete_auth_query() {
+    let app = build_app(test_state("secret-token"));
+
+    let update_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/stun/demo/update")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::AUTHORIZATION, "Bearer secret-token")
+                .body(Body::from(r#"{"addr":"5.6.7.8:9999"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(update_response.status(), StatusCode::NO_CONTENT);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/stun/demo/gost/nodes?username=chacha20-ietf-poly1305")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }

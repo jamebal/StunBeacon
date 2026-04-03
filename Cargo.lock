@@ -367,7 +367,7 @@ dependencies = [
 
 [[package]]
 name = "stunbeacon"
-version = "0.1.0"
+version = "0.1.4"
 dependencies = [
  "axum",
  "http-body-util",
